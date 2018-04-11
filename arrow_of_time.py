@@ -60,14 +60,14 @@ def create_descriptor(interest_pt, neighbourhood):
             vec = (max_mag*np.sin(theta), max_mag*np.cos(theta))  
             desc.append(vec[0]); desc.append(vec[1]);
     
-    
     # desc.shape => (1,32)
     desc = np.array([desc])
     return ret_val, desc
 
+
 def get_descriptors_of_curr_frame(kp, hsv):
-    
-    global video_desc_dataset
+
+    kp_desc = np.array([[]])
 
     for i in range(len(kp)):
 
@@ -77,8 +77,15 @@ def get_descriptors_of_curr_frame(kp, hsv):
             interest_pt = (int(x+0.5), int(y+0.5))
             (c, r) = interest_pt
             ret_val, desc = create_descriptor(interest_pt, hsv[r-6:r+6, c-6:c+6, :])	# takes an avg_runtime of 0.001 sec
+
+            if(ret_val == 1):
+                if kp_desc.shape == (1,0):
+                    kp_desc = np.hstack((kp_desc, desc))
+                else:
+                    kp_desc = np.vstack((kp_desc, desc))
             
-            return (ret_val, desc)
+    
+    return kp_desc
 
     # return frame_desc_dataset
 
@@ -104,6 +111,8 @@ def compute_sift_kp(bgr):
 
 def get_flow_words(frame1, frame2):
 
+    global video_desc_dataset
+
 	#  a total of 0.7 sec approx for getting flow words from a frame
 
     prvs = cv2.cvtColor(frame1,cv2.COLOR_BGR2GRAY)
@@ -122,13 +131,18 @@ def get_flow_words(frame1, frame2):
     
     
     # create descriptors
-    (ret_val, desc) = get_descriptors_of_curr_frame(kp, hsv)	# takes avg_runtime of 0.003sec
+    desc = get_descriptors_of_curr_frame(kp, hsv)	# takes avg_runtime of 0.003sec
+    # print(desc.shape)
+    
 
-    if(ret_val == 1):
-	    if video_desc_dataset.shape == (1,0):
-	        video_desc_dataset = np.hstack((video_desc_dataset, desc))
-	    else:
-	        video_desc_dataset = np.vstack((video_desc_dataset, desc))
+    if desc.shape != (1,0):
+        # if there are no valid keypoint descriptors in current frame
+
+        if video_desc_dataset.shape == (1,0):
+            video_desc_dataset = np.hstack((video_desc_dataset, desc[0,:].reshape(1,32)))
+            video_desc_dataset = np.vstack((video_desc_dataset, desc[1:,:]))
+        else:
+            video_desc_dataset = np.vstack((video_desc_dataset, desc))
     
     
     print(video_desc_dataset.shape)
