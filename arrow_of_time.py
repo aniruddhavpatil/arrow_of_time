@@ -4,8 +4,10 @@ import sys
 import timeit
 import numpy as np
 
-video_desc_dataset = np.array([[]])
-vocab = 0
+
+dict_of_flow_words = np.array([[]])
+bag_of_words = []
+knn = cv2.ml.KNearest_create()
 
 def disp_arr(bgr, r, c):
     for i in range(r):
@@ -15,21 +17,21 @@ def disp_arr(bgr, r, c):
 
 
 def disp_im(img, fn):
-	cv2.imshow(fn,img)
-	if cv2.waitKey(30) & 0xFF == 27:
-		sys.exit()
+    cv2.imshow(fn,img)
+    if cv2.waitKey(30) & 0xFF == 27:
+        sys.exit()
 
 def softmax(mag):
-	mag_t = mag - np.mean(mag)
-	return np.exp(mag_t)/np.sum(np.exp(mag_t))
+    mag_t = mag - np.mean(mag)
+    return np.exp(mag_t)/np.sum(np.exp(mag_t))
 
 def vectorize(ang):
-	r,c = ang.shape
-	temp = []
-	for i in range(r):
-		for j in range(c):
-			temp.append(ang[i, j])
-	return np.array(temp)
+    r,c = ang.shape
+    temp = []
+    for i in range(r):
+        for j in range(c):
+            temp.append(ang[i, j])
+    return np.array(temp)
 
 
 
@@ -73,10 +75,10 @@ def get_descriptors_of_curr_frame(kp, hsv):
 
             (x, y) = kp[i].pt
             if kp[i].size < kp_sz_thresh:
-            	continue
+                continue
             interest_pt = (int(x+0.5), int(y+0.5))
             (c, r) = interest_pt
-            ret_val, desc = create_descriptor(interest_pt, hsv[r-6:r+6, c-6:c+6, :])	# takes an avg_runtime of 0.001 sec
+            ret_val, desc = create_descriptor(interest_pt, hsv[r-6:r+6, c-6:c+6, :])    # takes an avg_runtime of 0.001 sec
 
             if(ret_val == 1):
                 if kp_desc.shape == (1,0):
@@ -96,7 +98,7 @@ def compute_optical_flow(prvs, next, hsv):
     hsv[...,0] = ang*180/np.pi/2
     hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
     bgr = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
-    disp_im(bgr, "f1")
+    # disp_im(bgr, "f1")
     return bgr, hsv
 
 def compute_sift_kp(bgr):
@@ -104,16 +106,15 @@ def compute_sift_kp(bgr):
     sift = cv2.xfeatures2d.SIFT_create()
     kp = sift.detect(gray,None)
     kp_img=cv2.drawKeypoints(gray,kp, gray, flags=4)
-    disp_im(kp_img, "f2")
+    # disp_im(kp_img, "f2")
     return kp
 
 
 
-def get_flow_words(frame1, frame2):
+def get_flow_words_of_curr_frame(frame1, frame2):
 
-    global video_desc_dataset
 
-	#  a total of 0.7 sec approx for getting flow words from a frame
+    #  a total of 0.7 sec approx for getting flow words from a frame
 
     prvs = cv2.cvtColor(frame1,cv2.COLOR_BGR2GRAY)
     next = cv2.cvtColor(frame2,cv2.COLOR_BGR2GRAY)
@@ -123,138 +124,146 @@ def get_flow_words(frame1, frame2):
 
     
     # compute optical flow
-    bgr, hsv = compute_optical_flow(prvs, next, hsv)	# takes avg_runtime of 0.3sec
+    bgr, hsv = compute_optical_flow(prvs, next, hsv)    # takes avg_runtime of 0.3sec
     
     
     # compute sift interest points
-    kp = compute_sift_kp(bgr)	# takes avg_runtime of 0.3sec
+    kp = compute_sift_kp(bgr)   # takes avg_runtime of 0.3sec
     
     
     # create descriptors
-    desc = get_descriptors_of_curr_frame(kp, hsv)	# takes avg_runtime of 0.003sec
+    desc = get_descriptors_of_curr_frame(kp, hsv)   # takes avg_runtime of 0.003sec
+    
+
     # print(desc.shape)
+    return desc
     
+    
+def kmeans_of_dict(no_of_clusters, max_iter, no_of_rand_inits):
+    
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, 1.0) # max_iter, acc
+    ret,label,center=cv2.kmeans(np.float32(dict_of_flow_words),no_of_clusters,None,criteria,no_of_rand_inits,cv2.KMEANS_PP_CENTERS) # no_of_clusters, no_of_rand_inits
+    print("MSE:", ret/dict_of_flow_words.shape[0])
+    return center
 
-    if desc.shape != (1,0):
+
+
+
+def build_dict(abs_fname):
+    
+    global dict_of_flow_words
+    
+    imgs = sorted(os.listdir(abs_fname))
+    
+    for i in range(len(imgs)):
+        
+        if i+2 > len(imgs)-1:
+            break
+    
+        prev = imgs[i]
+        nxt = imgs[i+2]
+        print(i)
+        prvs = cv2.imread(abs_fname+"/"+prev)
+        next = cv2.imread(abs_fname+"/"+nxt)
+
+        desc = get_flow_words_of_curr_frame(prvs, next)
+
+        if desc.shape != (1,0):
         # if there are no valid keypoint descriptors in current frame
+            if dict_of_flow_words.shape == (1,0):
+                dict_of_flow_words = np.hstack((dict_of_flow_words, desc[0,:].reshape(1,32)))
+                dict_of_flow_words = np.vstack((dict_of_flow_words, desc[1:,:]))
+            else:
+                dict_of_flow_words = np.vstack((dict_of_flow_words, desc))
 
-        if video_desc_dataset.shape == (1,0):
-            video_desc_dataset = np.hstack((video_desc_dataset, desc[0,:].reshape(1,32)))
-            video_desc_dataset = np.vstack((video_desc_dataset, desc[1:,:]))
-        else:
-            video_desc_dataset = np.vstack((video_desc_dataset, desc))
-    
-    
-    print(video_desc_dataset.shape)
+        print(dict_of_flow_words.shape)
         
 
 
-def build_vocab(no_of_clusters, max_iter, no_of_rand_inits):
-	global vocab
-	criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, max_iter, 1.0) # max_iter, acc
-	ret,label,center=cv2.kmeans(np.float32(video_desc_dataset),no_of_clusters,None,criteria,no_of_rand_inits,cv2.KMEANS_PP_CENTERS) # no_of_clusters, no_of_rand_inits
-	vocab = center
-	print("MSE:", ret/video_desc_dataset.shape[0])
-
-
-
-def fwd_play(path):
-	
-	folder_names = sorted(os.listdir(path))
-
-	for fname in folder_names:
-
-		print("Computing descriptors for ",fname," video...")
-		abs_fname = path+"/"+fname
-		imgs = sorted(os.listdir(abs_fname))
-		strt = timeit.default_timer()
-		
-		for i in range(len(imgs)):
-			
-			if i+2 > len(imgs)-1:
-				break
-		
-			prev = imgs[i]
-			nxt = imgs[i+2]
-			print(i, end=", ")
-			prvs = cv2.imread(abs_fname+"/"+prev)
-			next = cv2.imread(abs_fname+"/"+nxt)
-
-			get_flow_words(prvs, next)
-    	
-		stp = timeit.default_timer()
-		print("time taken: ", stp-strt, " secs")
-
 def build_dict_of_flow_words(path):
 
-    # pick random sample from the test data
-    # containing both back and fwd videos
+    # pick random sample from the test data containing both back and fwd videos
+    # making sure that equal no_of both fwd, backwd (how many ever pairs possible)
+    # videos are represented while creating the dictionary
 
-    # for each video get desc and store it in
-    # vocab[]. stop when you get 10^7 desc
+    # kmeans initialization
+    no_of_clusters = 5
+    max_iter = 1000
+    no_of_rand_inits = 10
 
-    # perform kmeans on the vocab, and get
-    # 4k cluster means
-
-    # return cluster means
-
-
-
-def get_hist_A_of_video(train_path):
+    folder_names = os.listdir(path)
+    thresh = 10000  # no_of_examples
     
-    # load vocab of A
-    np.load(vocab_of_A)
 
-    # loop through all train videos
-    fwd_play(train_path, )
+    fwd_lst = []
+    bck_lst = []
 
-        # get flow words for the video
-        # apply knn to find the bin of flow words
-        # store the histogram in hist_A
+    for fname in folder_names:
+        if fname[0] == 'F':
+            fwd_lst.append(fname)
+        else:
+            bck_lst.append(fname)
+    f_l = len(fwd_lst)
+    b_l = len(bck_lst)
 
-    # save hist_A
+    f_rand = np.arange(f_l)
+    b_rand = np.arange(b_l)
+
+    np.random.shuffle(f_rand)
+    np.random.shuffle(b_rand)
+
+    # print(f_rand, b_rand)
+
+    for i in range(max(f_l, b_l)):
+        
+
+        if i<f_l: 
+            print(fwd_lst[f_rand[i]])
+            build_dict(path+"/"+fwd_lst[f_rand[i]])
+
+        if i<b_l:
+            print(bck_lst[b_rand[i]])
+            build_dict(path+"/"+bck_lst[b_rand[i]])
+
+        if dict_of_flow_words.shape[0] >= thresh:
+            break
+
+    global bag_of_words
+    bag_of_words = kmeans_of_dict(no_of_clusters, max_iter, no_of_rand_inits)
+    np.save("dict_of_flow_words", dict_of_flow_words)
+    np.save("bag_of_words", bag_of_words)
 
 
+def build_knn():
+    global bag_of_words
+    
+    n = bag_of_words.shape[0]
+    indices = np.float32(np.array(range(0,n)))
+    indices.reshape(n,1)
 
-def kfold_run(path):
-
-    # loop through the given dataset
-
-        # build_dict_of_flow_words(path)
-
-        # for each video in train_dataset
-
-            # get_A_hist_of_video, store it in hist_A, lly generate label_A
-            # get_B_hist_of_video, store it in hist_B, lly generate label_A
-            # get_C_hist_of_video, store it in hist_C, lly generate label_A
-            # get_D_hist_of_video, store it in hist_D, lly generate label_A
-
-        # save the dataset
-        # perform pca on each of the hists individually
-
-        # train the dataset on MLP, to give A,B,C,D values given an input of all hist combined together
-
-        # repeat the above steps with the test data except, instead of training on the model predict
-
-    # reset the weights, vocab
-
-
-
+    knn.train(bag_of_words.astype(np.float32),cv2.ml.ROW_SAMPLE,indices.astype(np.float32))
 
 
 
 
 
 kp_sz_thresh = 15
-no_of_clusters = 5
-max_iter = 1000
-no_of_rand_inits = 10
+build_dict_of_flow_words("/home/goutham/CV_Project/test")   # give path to the train dataset, it builds the dict of flow words
+build_knn()
 
-fwd_play("/home/goutham/CV_Project/test")
-# need to take sqrt values to improve performance
-build_vocab(no_of_clusters, max_iter, no_of_rand_inits)
-np.save("fwd_vocab", vocab_of_A)
+# -------------------------------------------------------------------- Please read the below section
 
+# # Note: 
 
+# # this is used to load the saved dict_of_flow_words array
+# dict_of_flow_words = np.load('dict_of_flow_words.npy', mmap_mode='r')
+
+# # pls follow the below steps while using knn
+# # convert your desc to float32 (imp step)
+# x= dict_of_flow_words[1000,:].astype(np.float32) #this is just an example
+# # reshape it to the following size
+# x=x.reshape(1,32)
+# # use knn to find the bin
+# ret, results, neighbours, dist = knn.findNearest(x, 1)
 
 
