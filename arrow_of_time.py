@@ -14,8 +14,8 @@ def disp_arr(bgr, r, c):
         print("")
 
 
-def disp_im(img):
-	cv2.imshow("frame",img)
+def disp_im(img, fn):
+	cv2.imshow(fn,img)
 	if cv2.waitKey(30) & 0xFF == 27:
 		sys.exit()
 
@@ -96,7 +96,7 @@ def compute_optical_flow(prvs, next, hsv):
     hsv[...,0] = ang*180/np.pi/2
     hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
     bgr = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
-
+    disp_im(bgr, "f1")
     return bgr, hsv
 
 def compute_sift_kp(bgr):
@@ -104,7 +104,7 @@ def compute_sift_kp(bgr):
     sift = cv2.xfeatures2d.SIFT_create()
     kp = sift.detect(gray,None)
     kp_img=cv2.drawKeypoints(gray,kp, gray, flags=4)
-    # disp_im(kp_img)
+    disp_im(kp_img, "f2")
     return kp
 
 
@@ -185,19 +185,61 @@ def fwd_play(path):
 		stp = timeit.default_timer()
 		print("time taken: ", stp-strt, " secs")
 
+def build_dict_of_flow_words(path):
 
-def build_hist_A(train_path):
-	# load vocab of A
-	np.load(vocab_of_A)
+    # pick random sample from the test data
+    # containing both back and fwd videos
 
-	# loop through all train videos
-	fwd_play(train_path, )
+    # for each video get desc and store it in
+    # vocab[]. stop when you get 10^7 desc
 
-		# get flow words for the video
-		# apply knn to find the bin of flow words
-		# store the histogram in hist_A
+    # perform kmeans on the vocab, and get
+    # 4k cluster means
 
-	# save hist_A
+    # return cluster means
+
+
+
+def get_hist_A_of_video(train_path):
+    
+    # load vocab of A
+    np.load(vocab_of_A)
+
+    # loop through all train videos
+    fwd_play(train_path, )
+
+        # get flow words for the video
+        # apply knn to find the bin of flow words
+        # store the histogram in hist_A
+
+    # save hist_A
+
+
+
+def kfold_run(path):
+
+    # loop through the given dataset
+
+        # build_dict_of_flow_words(path)
+
+        # for each video in train_dataset
+
+            # get_A_hist_of_video, store it in hist_A, lly generate label_A
+            # get_B_hist_of_video, store it in hist_B, lly generate label_A
+            # get_C_hist_of_video, store it in hist_C, lly generate label_A
+            # get_D_hist_of_video, store it in hist_D, lly generate label_A
+
+        # save the dataset
+        # perform pca on each of the hists individually
+
+        # train the dataset on MLP, to give A,B,C,D values given an input of all hist combined together
+
+        # repeat the above steps with the test data except, instead of training on the model predict
+
+    # reset the weights, vocab
+
+
+
 
 
 
