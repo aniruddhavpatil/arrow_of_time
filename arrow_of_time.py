@@ -187,12 +187,12 @@ def build_dict_of_flow_words(path):
     # videos are represented while creating the dictionary
 
     # kmeans initialization
-    no_of_clusters = 5
+    no_of_clusters = 4000
     max_iter = 1000
     no_of_rand_inits = 10
 
     folder_names = os.listdir(path)
-    thresh = 10000  # no_of_examples
+    thresh = 1000000  # no_of_examples
 
 
     fwd_lst = []
@@ -203,10 +203,11 @@ def build_dict_of_flow_words(path):
         for d in dirs:
             if d == 'test' or d == 'train' or d == 'validation':
                 continue
-            if d[0] == 'F':
-                fwd_lst.append(subdir + "/" + d)
-            else:
-                bck_lst.append(subdir + "/" + d)
+            if 'train' in subdir:
+                if d[0] == 'F':
+                    fwd_lst.append(subdir + "/" + d)
+                else:
+                    bck_lst.append(subdir + "/" + d)
 
     f_l = len(fwd_lst)
     b_l = len(bck_lst)
@@ -225,7 +226,6 @@ def build_dict_of_flow_words(path):
         if i<f_l:
             print(fwd_lst[f_rand[i]])
             build_dict(fwd_lst[f_rand[i]])
-            break
         if i<b_l:
             print(bck_lst[b_rand[i]])
             build_dict(bck_lst[b_rand[i]])
@@ -249,12 +249,25 @@ def build_knn():
     knn.train(bag_of_words.astype(np.float32),cv2.ml.ROW_SAMPLE,indices.astype(np.float32))
 
 def fwd_playABCD(path,label):
-    hist_vid = []
+    hist_vid = np.zeros(4000)
+    #path = '/home/aaron.v/ArrowSplit1/test/F_pZcB4oJ5jsc'
     print("Computing descriptors for ",path," video...")
     imgs = sorted(os.listdir(path))
     if label == 'C' or label == 'D':
         imgs = sorted(os.listdir(path),reverse=True)
     strt = timeit.default_timer()
+    tr = 'train'
+    if 'test' in path:
+        tr = 'test'
+    elif 'validation' in path:
+        tr = 'validation'
+    fname = path.split('/')[-1]
+    # print('yo')
+    # path_temp = '/home/aaron.v/arrow_of_time/hist_each_vid/%s/hist_%s_%s.npy' % (tr,label,fname)
+    # if os.path.exists(path_temp):
+    #     # print('exists')
+    #     print('skip')
+    #     return
     for i in range(len(imgs)):
         if i+2 > len(imgs)-1:
             break
@@ -268,13 +281,16 @@ def fwd_playABCD(path,label):
             next = cv2.flip(next, 0)
         desc = get_flow_words_of_curr_frame(prvs, next)
         desc = desc.astype(np.float32)
-        ret, results, neighbours, dist = knn.findNearest(desc, 1)
-        # print(hist_vid)
-        hist_vid.append(results[0][0])
-
+        if desc.shape[1] == 32:
+            for i in desc:
+                i = i.reshape(1,32)
+                ret, results, neighbours, dist = knn.findNearest(i, 1)
+                b = int(results[0][0])
+                hist_vid[b] += 1
+    np.save('hist_each_vid_new/%s/hist_%s_%s' % (tr,label,fname), hist_vid)
     stp = timeit.default_timer()
     print("time taken: ", stp-strt, " secs")
-    return hist_vid
+    #return hist_vid
 
 def kfold_run(path):
     hist_A_vid = []
@@ -287,15 +303,15 @@ def kfold_run(path):
         for d in dirs:
             if d == 'test' or d == 'train' or d == 'validation':
                 continue
-            hist_A_vid.append(fwd_playABCD(subdir + "/" + d, 'A'))
-            hist_B_vid.append(fwd_playABCD(subdir + "/" + d, 'B'))
-            hist_C_vid.append(fwd_playABCD(subdir + "/" + d, 'C'))
-            hist_D_vid.append(fwd_playABCD(subdir + "/" + d, 'D'))
+            fwd_playABCD(subdir + "/" + d, 'A')
+            fwd_playABCD(subdir + "/" + d, 'B')
+            fwd_playABCD(subdir + "/" + d, 'C')
+            fwd_playABCD(subdir + "/" + d, 'D')
 
-    np.save('hist_A', hist_A_vid)
-    np.save('hist_B', hist_B_vid)
-    np.save('hist_C', hist_C_vid)
-    np.save('hist_D', hist_D_vid)
+    # np.save('hist_A', hist_A_vid)
+    # np.save('hist_B', hist_B_vid)
+    # np.save('hist_C', hist_C_vid)
+    # np.save('hist_D', hist_D_vid)
 
     # hist_A_vid = np.load(f1)
     # hist_B_vid = np.load(f2)
@@ -303,11 +319,11 @@ def kfold_run(path):
     # hist_D_vid = np.load(f4)
 
 kp_sz_thresh = 15
-build_dict_of_flow_words("/home/aaron.v/ArrowSplit1")   # give path to the train dataset, it builds the dict of flow words
-# dict_of_flow_words = np.load('dict_of_flow_words.npy', mmap_mode='r')
-# bag_of_words = np.load('bag_of_words.npy', mmap_mode='r')
+# build_dict_of_flow_words("/home/aaron.v/ArrowSplit1")   # give path to the train dataset, it builds the dict of flow words
+dict_of_flow_words = np.load('dict_of_flow_words.npy', mmap_mode='r')
+bag_of_words = np.load('bag_of_words.npy', mmap_mode='r')
 build_knn()
-kfold_run("/home/aaron.v/ArrowSplit1")
+kfold_run("/home/aaron.v/ArrowSplit1/train")
 
 # -------------------------------------------------------------------- Please read the below section
 
